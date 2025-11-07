@@ -121,23 +121,47 @@ jobs:
           
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Check build results
+      - name: Find and organize build artifacts
         if: steps.compile.outputs.status == 'success'
         run: |
           cd $SDK_DIR
-          echo "📦 Build results:"
-          echo "=== IPK files ==="
-          find bin -name "msd_lite*.ipk" -type f | head -10 || echo "No IPK files found"
-          echo "=== Binary files ==="
-          find build_dir -name "msd_lite" -type f -executable | head -5 || echo "No binary files found"
+          echo "📦 Searching for build artifacts..."
           
           # 创建上传目录
           mkdir -p upload
-          cp bin/packages/aarch64_generic/base/msd_lite*.ipk upload/ 2>/dev/null || true
-          cp build_dir/target-*/msd_lite-*/msd_lite upload/ 2>/dev/null || true
           
-          echo "Upload directory contents:"
+          # 查找 IPK 文件
+          echo "=== IPK files ==="
+          find bin -name "msd_lite*.ipk" -type f | while read file; do
+            echo "Found IPK: $file"
+            cp "$file" upload/
+          done
+          
+          # 查找二进制文件
+          echo "=== Binary files ==="
+          find build_dir -name "msd_lite" -type f | while read file; do
+            echo "Found binary: $file"
+            cp "$file" upload/
+            # 检查文件类型
+            file "$file"
+            # 给二进制文件添加执行权限
+            chmod +x upload/msd_lite
+          done
+          
+          # 如果没有找到二进制文件，尝试其他可能的位置
+          if [ ! -f "upload/msd_lite" ]; then
+            echo "⚠️  Binary not found in standard location, searching wider..."
+            find . -name "msd_lite" -type f -executable | head -5 | while read file; do
+              echo "Found executable: $file"
+              cp "$file" upload/
+              break
+            done
+          fi
+          
+          echo "📁 Upload directory contents:"
           ls -la upload/
+          echo "📊 File sizes:"
+          du -sh upload/* 2>/dev/null || echo "No files in upload directory"
 
       - name: Upload IPK package artifact
         uses: actions/upload-artifact@v4
@@ -150,8 +174,24 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: msd_lite-binary-rk3568
-          path: ${{ env.SDK_DIR }}/upload/msd_lite
+          path: |
+            ${{ env.SDK_DIR }}/upload/msd_lite
+            ${{ env.SDK_DIR }}/upload/msd_lite-*
           if-no-files-found: warn
+
+      - name: Debug build directory structure
+        if: always()
+        run: |
+          cd $SDK_DIR
+          echo "🔍 Debugging build directory structure..."
+          echo "=== Top level directories ==="
+          ls -la
+          echo "=== Bin directory ==="
+          find bin -type f -name "*msd*" 2>/dev/null | head -10 || echo "No msd files in bin"
+          echo "=== Build dir structure ==="
+          find build_dir -name "*msd_lite*" -type d 2>/dev/null | head -10 || echo "No msd_lite directories"
+          echo "=== All executable files in build_dir ==="
+          find build_dir -type f -executable 2>/dev/null | head -10 || echo "No executable files"
 
       - name: Create release info
         if: steps.compile.outputs.status == 'success'
@@ -167,17 +207,15 @@ jobs:
           - **Repository**: ${{ github.repository }}
           - **Commit**: ${{ github.sha }}
           
-          ## Package Contents
-          $(ls -la upload/ || echo "No files found")
+          ## Build Artifacts
           EOF
           
+          # 添加文件列表
+          if [ -d "upload" ]; then
+            echo "### Generated Files:" >> release_info.md
+            echo "\`\`\`" >> release_info.md
+            ls -la upload/ >> release_info.md 2>/dev/null || echo "No files in upload directory" >> release_info.md
+            echo "\`\`\`" >> release_info.md
+          fi
+          
           cat release_info.md
-
-      - name: Upload build logs (on failure)
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-logs
-          path: |
-            ${{ env.SDK_DIR }}/logs/
-            ${{ env.SDK_DIR }}/build_dir/target-*/msd_lite-*/config.log

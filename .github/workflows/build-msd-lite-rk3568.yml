@@ -1,4 +1,4 @@
-name: Build msd_lite for OpenWrt 21.02.1 (RK3568 Optimized)
+name: Build msd_lite for OpenWrt 21.02.1 (RK3568 Optimized + LTO + Strip)
 
 on:
   workflow_dispatch:
@@ -11,16 +11,17 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           submodules: true
 
-      - name: Install dependencies
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib gettext git \
-          libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget cmake
+          sudo apt-get install -y build-essential clang flex bison g++ gawk \
+            gcc-multilib gettext git libncurses5-dev libssl-dev python3-distutils \
+            rsync unzip zlib1g-dev file wget cmake
 
       - name: Download OpenWrt 21.02.1 SDK (RK3568)
         run: |
@@ -29,20 +30,53 @@ jobs:
           tar -xf openwrt-sdk-21.02.1-rockchip-armv8_gcc-8.4.0_musl.Linux-x86_64.tar.xz
           mv openwrt-sdk-21.02.1-rockchip-armv8_gcc-8.4.0_musl.Linux-x86_64 sdk
 
-      - name: Copy msd_lite package
+      - name: Prepare msd_lite package
         run: |
-          cp -r msd_lite openwrt-sdk/sdk/
+          cd openwrt-sdk/sdk/package
+          mkdir -p msd_lite
+          cp -r ../../../openwrt_msd_lite/msd_lite/* msd_lite/
+          echo "Package prepared with RK3568 optimizations"
+
+      - name: Enable LTO and strip
+        run: |
+          cd openwrt-sdk/sdk
+          # 开启全局 LTO
+          sed -i 's/# CONFIG_TARGET_LTO=y/CONFIG_TARGET_LTO=y/' .config
+          # 设置 strip 优化，去掉调试符号
+          echo "CONFIG_STRIP=n" >> .config
+          make defconfig
 
       - name: Build msd_lite
         run: |
           cd openwrt-sdk/sdk
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          make defconfig
-          make -j$(nproc) package/msd_lite/compile V=s
+          make package/msd_lite/compile V=s -j$(nproc)
+
+      - name: Print msd_lite binary info
+        run: |
+          BIN_FILE=$(find openwrt-sdk/sdk/build_dir/target-aarch64_generic_musl/msd_lite -type f -name "msd_lite")
+          if [ -f "$BIN_FILE" ]; then
+            echo "msd_lite binary path: $BIN_FILE"
+            ls -lh "$BIN_FILE"
+            file "$BIN_FILE"
+          else
+            echo "Error: msd_lite binary not found!"
+            exit 1
+          fi
+
+      - name: Rename and upload IPK
+        run: |
+          cd openwrt-sdk/sdk/bin/packages
+          OUTPUT_DIR=$(find . -type d -name base)
+          FILE=$(find $OUTPUT_DIR -type f -name "msd_lite*.ipk" | head -n 1)
+          DATE=$(date +%Y%m%d)
+          NEW_NAME="msd_lite_21.02.1_rk3568_optimized_${DATE}.ipk"
+          mv "$FILE" "$OUTPUT_DIR/$NEW_NAME"
+          echo "OUTPUT_FILE=$OUTPUT_DIR/$NEW_NAME" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: msd_lite_21.02.1_rk3568_optimized
-          path: openwrt-sdk/sdk/bin/packages/*/msd_lite*.ipk
+          path: ${{ env.OUTPUT_FILE }}

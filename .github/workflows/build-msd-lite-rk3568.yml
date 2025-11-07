@@ -10,6 +10,12 @@ on:
         required: false
         default: 'false'
 
+# 添加工作流级别的权限配置
+permissions:
+  contents: write  # 这行是关键！
+  packages: read
+  issues: read
+
 env:
   TZ: Asia/Shanghai
   SDK_URL: https://downloads.openwrt.org/releases/23.05.3/targets/rockchip/armv8/openwrt-sdk-23.05.3-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
@@ -18,6 +24,11 @@ jobs:
   build:
     name: Build msd_lite and LuCI app for RK3568
     runs-on: ubuntu-latest
+    
+    # 也可以在 job 级别设置权限（双重保障）
+    permissions:
+      contents: write
+      packages: read
     
     steps:
       - name: Checkout repository
@@ -179,6 +190,7 @@ jobs:
           file upload/* 2>/dev/null || echo "No files in upload directory"
 
       - name: Generate release info
+        id: info
         if: steps.compile.outputs.status == 'success'
         run: |
           cd $SDK_DIR
@@ -207,14 +219,22 @@ jobs:
           
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Upload artifacts to GitHub Release
+      - name: Debug permissions and files
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          echo "🔧 Checking permissions and files..."
+          echo "Working directory: $(pwd)"
+          echo "Upload directory contents:"
+          ls -la upload/
+          echo "Release info file:"
+          cat upload/RELEASE_INFO.md
+
+      - name: Create GitHub Release
         if: steps.compile.outputs.status == 'success' && steps.info.outputs.status == 'success'
         uses: softprops/action-gh-release@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: "build-$(date +%Y%m%d-%H%M%S)"
-          name: "MSD Lite RK3568 Build $(date +%Y-%m-%d)"
+          name: "MSD Lite RK3568 Build $(date +'%Y-%m-%d %H:%M')"
           body_path: ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md
           files: |
             ${{ env.SDK_DIR }}/upload/*.ipk

@@ -1,4 +1,4 @@
-name: Build msd_lite for RK3568
+name: Build msd_lite for RK3568 (21.02.1)
 
 on:
   push:
@@ -9,22 +9,24 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      TARGET_ARCH: aarch64
       SDK_DIR: openwrt-sdk/sdk
 
     steps:
     - name: Checkout repository
       uses: actions/checkout@v3
 
-    - name: Setup OpenWrt SDK
+    - name: Download OpenWrt 21.02.1 SDK
       run: |
-        # 假设 SDK 已经存在，如果没有可添加下载步骤
-        ls -l ${{ env.SDK_DIR }}
+        mkdir -p openwrt-sdk
+        cd openwrt-sdk
+        wget https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+        tar -xf openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
+        mv openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl sdk
 
     - name: Copy msd_lite package
       run: |
         cd ${{ env.SDK_DIR }}/package
-        cp -R ../../openwrt_msd_lite/msd_lite .
+        cp -R ../../../openwrt_msd_lite/msd_lite .
 
     - name: Update feeds
       run: |

@@ -36,7 +36,8 @@ start_instance() {
     local threads thread_bind_cpu hub_drop_slow_client hub_use_polling_for_send
     local hub_zero_copy_on_send hub_persist_when_no_client hub_persist_when_no_source
     local hub_precache_size hub_wait_precache source_ring_buffer_size source_multicast_rejoin_interval
-
+    local multicast_recv_buffer_size
+    
     if ! validate_config "$section"; then
         return 1
     fi
@@ -57,6 +58,7 @@ start_instance() {
     config_get_bool hub_wait_precache "$section" hub_wait_precache 0
     config_get source_ring_buffer_size "$section" source_ring_buffer_size 8192
     config_get source_multicast_rejoin_interval "$section" source_multicast_rejoin_interval 0
+    config_get multicast_recv_buffer_size "$section" multicast_recv_buffer_size 512
 
     # 拆分 IP:Port
     local bind_ip="${bind_address%:*}"
@@ -93,6 +95,7 @@ start_instance() {
             <multicast>
                 <ifName>${source_interface}</ifName>
                 <rejoinTime>${source_multicast_rejoin_interval}</rejoinTime>
+                <recvBufSize>${multicast_recv_buffer_size}</recvBufSize>
             </multicast>
         </sourceProfile>
     </sourceProfileList>

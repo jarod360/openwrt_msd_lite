@@ -4,19 +4,30 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      ssh:
+        description: 'SSH connection to Actions'
+        required: false
+        default: 'false'
+
+env:
+  TZ: Asia/Shanghai
+  SDK_URL: https://downloads.openwrt.org/releases/23.05.3/targets/rockchip/armv8/openwrt-sdk-23.05.3-rockchip-armv8_gcc-12.3.0_musl.Linux-x86_64.tar.xz
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-
+    name: Build msd_lite for RK3568
+    runs-on: ubuntu-latest
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install OpenWrt build dependencies
+      - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
+          sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
+          sudo -E apt-get -qq update
+          sudo -E apt-get -qq install \
             build-essential \
             ccache \
             file \
@@ -28,68 +39,142 @@ jobs:
             libncursesw5-dev \
             libssl-dev \
             python3 \
-            python3-distutils \
             python3-pip \
             python3-setuptools \
             rsync \
             unzip \
             wget \
             zlib1g-dev \
-            subversion \
-            time
+            zstd
 
-      - name: Setup Python alternatives
+      - name: Download and extract OpenWrt SDK
         run: |
-          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
-          python --version
-
-      - name: Download OpenWrt SDK
-        run: |
-          wget -q https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
-          tar -xf openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
-          mv openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64 openwrt-sdk
-          echo "SDK_DIR=openwrt-sdk" >> $GITHUB_ENV
+          wget -q ${{ env.SDK_URL }}
+          file_name=$(echo ${{ env.SDK_URL }} | awk -F/ '{print $NF}')
+          mkdir sdk
+          if [[ $file_name == *.tar.xz ]]; then
+            tar -xJf $file_name -C ./sdk --strip-components=1
+          elif [[ $file_name == *.tar.zst ]]; then
+            tar --zstd -x -f $file_name -C ./sdk --strip-components=1
+          else
+            echo "Unsupported file format: $file_name"
+            exit 1
+          fi
+          echo "SDK_DIR=$PWD/sdk" >> $GITHUB_ENV
 
       - name: Copy msd_lite package to SDK
         run: |
-          cp -r msd_lite $SDK_DIR/package/
+          # 检查并复制 msd_lite 包
+          if [ -d "msd_lite" ]; then
+            cp -r msd_lite $SDK_DIR/package/
+            echo "✅ msd_lite package copied successfully"
+          elif [ -d "openwrt_msd_lite/msd_lite" ]; then
+            cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
+            echo "✅ msd_lite package copied from openwrt_msd_lite directory"
+          else
+            echo "❌ Could not find msd_lite package directory"
+            find . -name "*msd*" -type d
+            exit 1
+          fi
+          
           echo "Package contents:"
           ls -la $SDK_DIR/package/msd_lite/
 
-      - name: Build msd_lite package
+      - name: SSH connection to Actions (debug)
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event.inputs.ssh == 'true' }}
+
+      - name: Setup feeds and configuration
         run: |
           cd $SDK_DIR
+          
+          # 更新 feeds
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
-          # 先检查配置
+          # 基础配置
+          echo "CONFIG_TARGET_rockchip_armv8=y" > .config
+          echo "CONFIG_TARGET_rockchip_armv8_DEVICE_friendlyarm_nanopi-r5s=y" >> .config
+          echo "CONFIG_ALL_NONSHARED=n" >> .config
+          echo "CONFIG_ALL_KMODS=n" >> .config
+          echo "CONFIG_ALL=n" >> .config
+          echo "CONFIG_AUTOREMOVE=y" >> .config
           echo "CONFIG_PACKAGE_msd_lite=m" >> .config
-          make defconfig
           
-          # 强制构建（跳过Python检查）
-          FORCE=1 make package/msd_lite/clean
-          FORCE=1 make package/msd_lite/compile V=sc
+          make defconfig
+
+      - name: Download package sources
+        run: |
+          cd $SDK_DIR
+          make package/msd_lite/download V=s
+          find dl -size -1024c -exec ls -l {} \; || true
+
+      - name: Build msd_lite package
+        id: compile
+        run: |
+          cd $SDK_DIR
+          echo "🚀 Starting msd_lite compilation..."
+          
+          # 清理并编译
+          make package/msd_lite/clean V=s
+          make package/msd_lite/compile -j$(nproc) V=s
+          
+          echo "status=success" >> $GITHUB_OUTPUT
 
       - name: Check build results
+        if: steps.compile.outputs.status == 'success'
         run: |
-          echo "=== Build results ==="
-          find $SDK_DIR -name "msd_lite*.ipk" -type f | head -10
-          find $SDK_DIR -name "msd_lite" -type f -executable | head -10
-          echo "=== Bin directory ==="
-          ls -la $SDK_DIR/bin/ || echo "Bin directory not found"
-          echo "=== Build dir ==="
-          find $SDK_DIR/build_dir -name "msd_lite*" -type d | head -5
+          cd $SDK_DIR
+          echo "📦 Build results:"
+          echo "=== IPK files ==="
+          find bin -name "msd_lite*.ipk" -type f | head -10 || echo "No IPK files found"
+          echo "=== Binary files ==="
+          find build_dir -name "msd_lite" -type f -executable | head -5 || echo "No binary files found"
+          
+          # 创建上传目录
+          mkdir -p upload
+          cp bin/packages/aarch64_generic/base/msd_lite*.ipk upload/ 2>/dev/null || true
+          cp build_dir/target-*/msd_lite-*/msd_lite upload/ 2>/dev/null || true
+          
+          echo "Upload directory contents:"
+          ls -la upload/
 
-      - name: Upload IPK package
+      - name: Upload IPK package artifact
         uses: actions/upload-artifact@v4
         with:
-          name: msd_lite-ipk
-          path: |
-            ${{ env.SDK_DIR }}/bin/packages/aarch64_generic/base/msd_lite*.ipk
-            ${{ env.SDK_DIR }}/build_dir/target-*/msd_lite-*/msd_lite
+          name: msd_lite-ipk-rk3568
+          path: ${{ env.SDK_DIR }}/upload/*.ipk
+          if-no-files-found: warn
 
-      - name: Upload build logs
-        if: always()
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: msd_lite-binary-rk3568
+          path: ${{ env.SDK_DIR }}/upload/msd_lite
+          if-no-files-found: warn
+
+      - name: Create release info
+        if: steps.compile.outputs.status == 'success'
+        run: |
+          cd $SDK_DIR
+          cat > release_info.md << EOF
+          # MSD_Lite for RK3568
+          
+          ## Build Information
+          - **Platform**: RK3568 (Rockchip ARMv8)
+          - **SDK Version**: OpenWrt 23.05.3
+          - **Build Date**: $(date +"%Y-%m-%d %H:%M:%S")
+          - **Repository**: ${{ github.repository }}
+          - **Commit**: ${{ github.sha }}
+          
+          ## Package Contents
+          $(ls -la upload/ || echo "No files found")
+          EOF
+          
+          cat release_info.md
+
+      - name: Upload build logs (on failure)
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: build-logs

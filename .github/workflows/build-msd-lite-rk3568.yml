@@ -232,16 +232,17 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.compile.outputs.status == 'success' && steps.info.outputs.status == 'success'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: "build-$(date +%Y%m%d-%H%M%S)"
-          name: "MSD Lite RK3568 Build $(date +'%Y-%m-%d %H:%M')"
-          body_path: ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md
-          files: |
-            ${{ env.SDK_DIR }}/upload/*.ipk
-            ${{ env.SDK_DIR }}/upload/msd_lite
-          prerelease: true
-          draft: false
+        run: |
+          BUILD_TAG="build-$(date +%Y%m%d-%H%M%S)"
+          echo "Creating release with tag: $BUILD_TAG"
+          gh release create "$BUILD_TAG" \
+            --title "MSD Lite RK3568 Build $(date +'%Y-%m-%d %H:%M')" \
+            --notes-file ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md \
+            ${{ env.SDK_DIR }}/upload/*.ipk \
+            ${{ env.SDK_DIR }}/upload/msd_lite \
+            --prerelease
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload IPK packages to artifacts
         uses: actions/upload-artifact@v4

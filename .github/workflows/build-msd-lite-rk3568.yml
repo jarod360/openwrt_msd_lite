@@ -13,35 +13,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: Install OpenWrt build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            clang \
-            gcc \
+            ccache \
+            ecj \
+            fastjar \
+            file \
             g++ \
-            autoconf \
-            automake \
-            libtool \
-            pkg-config \
+            gawk \
+            gettext \
+            git \
+            java-propose-classpath \
+            libelf-dev \
             libncurses5-dev \
+            libncursesw5-dev \
+            libssl-dev \
             python3 \
             python3-dev \
             python3-pip \
+            python3-setuptools \
             python3-venv \
             rsync \
-            git \
             subversion \
-            wget \
-            curl \
-            file \
             swig \
-            libssl-dev \
-            libc6-dev \
-            lib32stdc++6 \
+            time \
+            xsltproc \
             zlib1g-dev \
             unzip
+
+      - name: Set up Python alternatives
+        run: |
+          # 确保 python3 是默认的 python
+          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+          python --version
 
       - name: Set up environment
         run: |
@@ -66,12 +73,12 @@ jobs:
           echo "Copied msd_lite package contents:"
           ls -la $SDK_DIR/package/msd_lite/
 
-      - name: Build msd_lite
+      - name: Build msd_lite with FORCE=1
         run: |
           cd $SDK_DIR
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          make package/msd_lite/{clean,compile} V=s
+          FORCE=1 make package/msd_lite/{clean,compile} V=s
 
       - name: Upload compiled IPK package
         uses: actions/upload-artifact@v4

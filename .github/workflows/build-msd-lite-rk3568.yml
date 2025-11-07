@@ -7,51 +7,92 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install OpenWrt build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            ccache \
+            file \
+            g++ \
+            gawk \
+            gettext \
+            git \
+            libncurses5-dev \
+            libncursesw5-dev \
+            libssl-dev \
+            python3 \
+            python3-distutils \
+            python3-pip \
+            python3-setuptools \
+            rsync \
+            unzip \
+            wget \
+            zlib1g-dev \
+            subversion \
+            time
+
+      - name: Setup Python alternatives
+        run: |
+          sudo update-alternatives --install /usr/bin/python python /usr/bin/python3 1
+          python --version
+
       - name: Download OpenWrt SDK
         run: |
-          mkdir -p openwrt-sdk
-          cd openwrt-sdk
           wget -q https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
           tar -xf openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz
-          mv openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64 sdk
-          cd ..
+          mv openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64 openwrt-sdk
+          echo "SDK_DIR=openwrt-sdk" >> $GITHUB_ENV
 
-      - name: Copy msd_lite package
+      - name: Copy msd_lite package to SDK
         run: |
-          cp -r msd_lite openwrt-sdk/sdk/package/
-          echo "Package copied successfully:"
-          ls -la openwrt-sdk/sdk/package/msd_lite/
+          cp -r msd_lite $SDK_DIR/package/
+          echo "Package contents:"
+          ls -la $SDK_DIR/package/msd_lite/
 
-      - name: Build using Docker
+      - name: Build msd_lite package
         run: |
-          # 使用 OpenWrt 官方 Docker 镜像构建
-          docker run --rm \
-            -v $(pwd)/openwrt-sdk/sdk:/sdk \
-            -v $(pwd)/msd_lite:/msd_lite \
-            openwrtorg/sdk:armvirt-64-21.02.1 \
-            /bin/bash -c "
-              cd /sdk
-              cp -r /msd_lite package/
-              ./scripts/feeds update -a
-              ./scripts/feeds install -a
-              make package/msd_lite/clean
-              make package/msd_lite/compile V=s
-            "
+          cd $SDK_DIR
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+          
+          # 先检查配置
+          echo "CONFIG_PACKAGE_msd_lite=m" >> .config
+          make defconfig
+          
+          # 强制构建（跳过Python检查）
+          FORCE=1 make package/msd_lite/clean
+          FORCE=1 make package/msd_lite/compile V=sc
+
+      - name: Check build results
+        run: |
+          echo "=== Build results ==="
+          find $SDK_DIR -name "msd_lite*.ipk" -type f | head -10
+          find $SDK_DIR -name "msd_lite" -type f -executable | head -10
+          echo "=== Bin directory ==="
+          ls -la $SDK_DIR/bin/ || echo "Bin directory not found"
+          echo "=== Build dir ==="
+          find $SDK_DIR/build_dir -name "msd_lite*" -type d | head -5
 
       - name: Upload IPK package
         uses: actions/upload-artifact@v4
         with:
-          name: msd_lite-ipk-package
-          path: openwrt-sdk/sdk/bin/packages/aarch64_generic/base/msd_lite*.ipk
+          name: msd_lite-ipk
+          path: |
+            ${{ env.SDK_DIR }}/bin/packages/aarch64_generic/base/msd_lite*.ipk
+            ${{ env.SDK_DIR }}/build_dir/target-*/msd_lite-*/msd_lite
 
-      - name: Upload binary
+      - name: Upload build logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: msd_lite-binary
-          path: openwrt-sdk/sdk/build_dir/target-*/msd_lite-*/msd_lite
+          name: build-logs
+          path: |
+            ${{ env.SDK_DIR }}/logs/
+            ${{ env.SDK_DIR }}/build_dir/target-*/msd_lite-*/config.log

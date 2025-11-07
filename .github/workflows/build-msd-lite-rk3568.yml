@@ -10,39 +10,40 @@ build:
 runs-on: ubuntu-latest
 
 ```
-steps:  
-- name: Checkout repository  
-  uses: actions/checkout@v3  
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v3
 
-- name: Set up variables  
-  run: |  
-    echo "SDK_URL=https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz" >> $GITHUB_ENV  
-    echo "SDK_DIR=openwrt-sdk/sdk" >> $GITHUB_ENV  
+  - name: Set up variables
+    run: |
+      echo "SDK_URL=https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz" >> $GITHUB_ENV
+      echo "SDK_DIR=openwrt-sdk/sdk" >> $GITHUB_ENV
 
-- name: Download OpenWrt SDK  
-  run: |  
-    mkdir -p openwrt-sdk  
-    cd openwrt-sdk  
-    wget $SDK_URL  
-    SDK_TAR=$(basename $SDK_URL)  
-    tar -xf $SDK_TAR  
-    SDK_EXTRACTED_DIR=$(tar -tf $SDK_TAR | head -1 | cut -f1 -d"/")  
-    mv "$SDK_EXTRACTED_DIR" sdk  
+  - name: Download OpenWrt SDK
+    run: |
+      mkdir -p openwrt-sdk
+      cd openwrt-sdk
+      wget ${SDK_URL}
+      SDK_TAR=$(basename ${SDK_URL})
+      tar -xf ${SDK_TAR}
+      SDK_EXTRACTED_DIR=$(tar -tf ${SDK_TAR} | head -1 | cut -f1 -d"/")
+      mv "$SDK_EXTRACTED_DIR" sdk
+      cd ..
 
-- name: Copy msd_lite package into SDK  
-  run: |  
-    cp -r ../openwrt_msd_lite/msd_lite openwrt-sdk/sdk/package/  
+  - name: Copy msd_lite package into SDK
+    run: |
+      cp -r openwrt_msd_lite/msd_lite ${SDK_DIR}/package/
 
-- name: Build msd_lite  
-  run: |  
-    cd openwrt-sdk/sdk  
-    ./scripts/feeds update -a  
-    ./scripts/feeds install -a  
-    make package/msd_lite/{clean,compile} V=s  
+  - name: Build msd_lite
+    run: |
+      cd ${SDK_DIR}
+      ./scripts/feeds update -a
+      ./scripts/feeds install -a
+      make package/msd_lite/{clean,compile} V=s
 
-- name: Upload compiled binary  
-  uses: actions/upload-artifact@v3  
-  with:  
-    name: msd_lite-bin  
-    path: openwrt-sdk/sdk/build_dir/target-aarch64_generic_musl/msd_lite/msd_lite  
+  - name: Upload compiled binary
+    uses: actions/upload-artifact@v3
+    with:
+      name: msd_lite-bin
+      path: ${SDK_DIR}/build_dir/target-aarch64_generic_musl/msd_lite/msd_lite
 ```

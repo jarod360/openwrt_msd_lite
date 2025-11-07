@@ -8,16 +8,14 @@ workflow_dispatch:
 jobs:
 build:
 runs-on: ubuntu-latest
+env:
+SDK_URL: [https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz](https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz)
+SDK_DIR: openwrt-sdk/sdk
 
 ```
 steps:
   - name: Checkout repository
     uses: actions/checkout@v3
-
-  - name: Set up environment
-    run: |
-      echo "SDK_URL=https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz" >> $GITHUB_ENV
-      echo "SDK_DIR=openwrt-sdk/sdk" >> $GITHUB_ENV
 
   - name: Download and extract OpenWrt SDK
     run: |
@@ -31,11 +29,11 @@ steps:
       cd ..
 
   - name: Copy msd_lite package into SDK
-    run: cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
+    run: cp -r openwrt_msd_lite/msd_lite ${{ env.SDK_DIR }}/package/
 
   - name: Build msd_lite
     run: |
-      cd $SDK_DIR
+      cd ${{ env.SDK_DIR }}
       ./scripts/feeds update -a
       ./scripts/feeds install -a
       make package/msd_lite/{clean,compile} V=s
@@ -44,5 +42,5 @@ steps:
     uses: actions/upload-artifact@v3
     with:
       name: msd_lite-bin
-      path: $SDK_DIR/build_dir/target-aarch64_generic_musl/msd_lite/msd_lite
+      path: ${{ env.SDK_DIR }}/build_dir/target-aarch64_generic_musl/msd_lite/msd_lite
 ```

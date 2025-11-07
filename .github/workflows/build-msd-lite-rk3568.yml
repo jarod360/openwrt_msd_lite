@@ -222,12 +222,13 @@ jobs:
       - name: Debug permissions and files
         if: steps.compile.outputs.status == 'success'
         run: |
+          cd $SDK_DIR
           echo "🔧 Checking permissions and files..."
           echo "Working directory: $(pwd)"
           echo "Upload directory contents:"
           ls -la upload/
           echo "Release info file:"
-          cat upload/RELEASE_INFO.md
+          cat upload/RELEASE_INFO.md || echo "No release info file"
 
       - name: Create GitHub Release
         if: steps.compile.outputs.status == 'success' && steps.info.outputs.status == 'success'

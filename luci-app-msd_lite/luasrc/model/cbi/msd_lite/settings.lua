@@ -117,6 +117,14 @@ source_ring_buffer_size.datatype = "uinteger"
 source_ring_buffer_size.placeholder = "8192"
 source_ring_buffer_size.description = translate("设置输入流缓冲区大小，数值越大可减少丢包但占用内存更多")
 
+-- 接受缓冲区大小
+multicast_recv_buffer_size = s:taboption("advanced", Value, "multicast_recv_buffer_size", translate("接收缓冲区大小（KB）"))
+multicast_recv_buffer_size.default = "512"
+multicast_recv_buffer_size.datatype = "uinteger"
+multicast_recv_buffer_size.optional = true
+multicast_recv_buffer_size.rmempty = true
+multicast_recv_buffer_size.description = translate("用于设置系统层面的 UDP 接收缓冲区大小（SO_RCVBUF），单位 KB。增大可减少高负载下的丢包。")
+
 -- 组播重连间隔
 source_multicast_rejoin_interval = s:taboption("advanced", Value, "source_multicast_rejoin_interval", translate("组播重连间隔（秒）"))
 source_multicast_rejoin_interval.datatype = "uinteger"

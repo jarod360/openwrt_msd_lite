@@ -13,6 +13,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Debug actual directory structure
+        run: |
+          echo "=== Root directory contents ==="
+          ls -la
+          echo "=== Searching for msd_lite related files ==="
+          find . -name "*msd*" -type d 2>/dev/null || echo "No msd directories found"
+          find . -name "Makefile" -type f | grep -i msd || echo "No msd Makefile found"
+          echo "=== All directories ==="
+          ls -la */
+
       - name: Set up environment
         run: |
           echo "SDK_URL=https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz" >> $GITHUB_ENV
@@ -29,21 +39,29 @@ jobs:
           mv "$SDK_EXTRACTED_DIR" sdk
           cd ..
 
-      - name: Verify source directory structure
+      - name: Find and copy msd_lite package
         run: |
-          echo "Checking openwrt_msd_lite/msd_lite directory:"
-          ls -la openwrt_msd_lite/msd_lite/
-          echo "Makefile exists:"
-          ls -la openwrt_msd_lite/msd_lite/Makefile
-
-      - name: Copy msd_lite package into SDK
-        run: |
-          # 确保目标目录存在
+          # 创建目标目录
           mkdir -p $SDK_DIR/package/
-          # 复制整个msd_lite包目录
-          cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
-          # 验证复制是否成功
-          echo "Copied contents:"
+          
+          # 尝试不同的可能路径
+          if [ -d "openwrt_msd_lite/msd_lite" ]; then
+            echo "Found: openwrt_msd_lite/msd_lite"
+            cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
+          elif [ -d "msd_lite" ]; then
+            echo "Found: msd_lite"
+            cp -r msd_lite $SDK_DIR/package/
+          elif [ -d "package/msd_lite" ]; then
+            echo "Found: package/msd_lite"
+            cp -r package/msd_lite $SDK_DIR/package/
+          else
+            echo "ERROR: Could not find msd_lite directory"
+            echo "Available directories:"
+            find . -maxdepth 2 -type d | sort
+            exit 1
+          fi
+          
+          echo "Successfully copied msd_lite package:"
           ls -la $SDK_DIR/package/msd_lite/
 
       - name: Build msd_lite

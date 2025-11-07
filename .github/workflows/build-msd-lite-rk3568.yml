@@ -1,66 +1,55 @@
-name: Build MSD_Lite for RK3568
+name: Build msd_lite for RK3568
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      SDK_VERSION: "21.02.1"
+      SDK_ARCH: "armvirt-64_gcc-8.4.0_musl"
+      SDK_TAR: "openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz"
+      SDK_DIR: "$GITHUB_WORKSPACE/openwrt-sdk/sdk"
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
-      - name: Set up environment
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential subversion git wget xz-utils ccache
+
+      - name: Download OpenWrt SDK
         run: |
-          echo "SDK_URL=https://downloads.openwrt.org/releases/21.02.1/targets/armvirt/64/openwrt-sdk-21.02.1-armvirt-64_gcc-8.4.0_musl.Linux-x86_64.tar.xz" >> $GITHUB_ENV
-          echo "SDK_DIR=openwrt-sdk/sdk" >> $GITHUB_ENV
+          wget https://downloads.openwrt.org/releases/${{ env.SDK_VERSION }}/targets/armvirt/64/${{ env.SDK_TAR }}
+          tar -xJf ${{ env.SDK_TAR }} -C $GITHUB_WORKSPACE
+          mv $GITHUB_WORKSPACE/openwrt-sdk-${{ env.SDK_VERSION }}-${{ env.SDK_ARCH }} $GITHUB_WORKSPACE/openwrt-sdk/sdk
 
-      - name: Download and extract OpenWrt SDK
-        run: |
-          mkdir -p openwrt-sdk
-          cd openwrt-sdk
-          wget $SDK_URL
-          SDK_TAR=$(basename $SDK_URL)
-          tar -xf $SDK_TAR
-          SDK_EXTRACTED_DIR=$(tar -tf $SDK_TAR | head -1 | cut -f1 -d"/")
-          mv "$SDK_EXTRACTED_DIR" sdk
-          cd ..
-
-      - name: Verify source directory structure
+      - name: Verify msd_lite directory
         run: |
           echo "Checking openwrt_msd_lite/msd_lite directory:"
-          ls -la openwrt_msd_lite/msd_lite/
-          echo "Makefile exists:"
-          ls -la openwrt_msd_lite/msd_lite/Makefile
+          ls -l openwrt_msd_lite/msd_lite
 
-      - name: Copy msd_lite package into SDK
+      - name: Copy msd_lite package to SDK
         run: |
-          # 确保目标目录存在
-          mkdir -p $SDK_DIR/package/
-          # 复制整个msd_lite包目录
-          cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
-          # 验证复制是否成功
-          echo "Copied contents:"
-          ls -la $SDK_DIR/package/msd_lite/
+          cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/msd_lite
 
-      - name: Build msd_lite
+      - name: Update feeds
         run: |
           cd $SDK_DIR
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-          make package/msd_lite/{clean,compile} V=s
 
-      - name: Upload compiled IPK package
-        uses: actions/upload-artifact@v4
-        with:
-          name: msd_lite-ipk
-          path: $SDK_DIR/bin/packages/aarch64_generic/base/msd_lite*.ipk
+      - name: Compile msd_lite
+        run: |
+          cd $SDK_DIR
+          make package/msd_lite/compile V=s -j$(nproc)
 
-      - name: Upload compiled binary
-        uses: actions/upload-artifact@v4
+      - name: Upload msd_lite binary
+        uses: actions/upload-artifact@v3
         with:
-          name: msd_lite-binary
-          path: $SDK_DIR/build_dir/target-*/msd_lite-*/msd_lite
+          name: msd_lite-bin
+          path: $SDK_DIR/bin/packages/*/base/msd_lite*.ipk

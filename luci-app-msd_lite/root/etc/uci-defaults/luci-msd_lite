@@ -1,0 +1,14 @@
+#!/bin/sh
+
+# UCI 跟踪配置 - 确保服务在配置变化时自动重启
+uci -q batch <<-EOF
+	delete ucitrack.@msd_lite[-1]
+	add ucitrack msd_lite
+	set ucitrack.@msd_lite[-1].init=msd_lite
+	commit ucitrack
+EOF
+
+# 清理 LuCI 缓存 - 使新安装的页面立即可见
+rm -f /tmp/luci-indexcache
+
+exit 0

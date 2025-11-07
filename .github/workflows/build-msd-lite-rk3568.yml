@@ -29,8 +29,22 @@ jobs:
           mv "$SDK_EXTRACTED_DIR" sdk
           cd ..
 
+      - name: Verify source directory structure
+        run: |
+          echo "Checking openwrt_msd_lite/msd_lite directory:"
+          ls -la openwrt_msd_lite/msd_lite/
+          echo "Makefile exists:"
+          ls -la openwrt_msd_lite/msd_lite/Makefile
+
       - name: Copy msd_lite package into SDK
-        run: cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
+        run: |
+          # 确保目标目录存在
+          mkdir -p $SDK_DIR/package/
+          # 复制整个msd_lite包目录
+          cp -r openwrt_msd_lite/msd_lite $SDK_DIR/package/
+          # 验证复制是否成功
+          echo "Copied contents:"
+          ls -la $SDK_DIR/package/msd_lite/
 
       - name: Build msd_lite
         run: |
@@ -39,8 +53,14 @@ jobs:
           ./scripts/feeds install -a
           make package/msd_lite/{clean,compile} V=s
 
+      - name: Upload compiled IPK package
+        uses: actions/upload-artifact@v4
+        with:
+          name: msd_lite-ipk
+          path: $SDK_DIR/bin/packages/aarch64_generic/base/msd_lite*.ipk
+
       - name: Upload compiled binary
         uses: actions/upload-artifact@v4
         with:
-          name: msd_lite-bin
-          path: $SDK_DIR/bin/packages/aarch64_generic/base/msd_lite*.ipk
+          name: msd_lite-binary
+          path: $SDK_DIR/build_dir/target-*/msd_lite-*/msd_lite

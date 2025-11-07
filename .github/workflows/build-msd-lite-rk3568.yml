@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up environment
         run: |
@@ -40,7 +40,7 @@ jobs:
           make package/msd_lite/{clean,compile} V=s
 
       - name: Upload compiled binary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: msd_lite-bin
           path: $SDK_DIR/bin/packages/aarch64_generic/base/msd_lite*.ipk

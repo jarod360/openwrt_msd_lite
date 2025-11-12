@@ -1,0 +1,73 @@
+From: Your Name <your@email.com>
+Date: Mon, 13 Nov 2023 10:00:00 +0800
+Subject: [PATCH] Add safe temporary file cleanup on startup
+
+This patch adds automatic cleanup of old temporary files using direct file operations
+instead of system calls, making it more secure and efficient.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -25,6 +25,52 @@
+ #include "version.h"
+ 
+ 
++/**
++ * Safe cleanup of old temporary files on startup
++ * Uses direct file operations instead of system calls
++ */
++static void cleanup_old_temp_files(void) {
++    const char *temp_patterns[] = {
++        "msd_*.tmp",
++        "msd_ring_*.tmp",
++        "msd_overflow_*.tmp", 
++        "msd_precache_*.tmp",
++        "msd_mmap_*.tmp",
++        "msd_recovery_*.tmp",
++        NULL
++    };
++    
++    DIR *dir;
++    struct dirent *entry;
++    int i;
++    
++    dir = opendir("/tmp");
++    if (dir == NULL) {
++        LOG_ERROR("Cannot open /tmp directory for cleanup");
++        return;
++    }
++    
++    while ((entry = readdir(dir)) != NULL) {
++        if (entry->d_type == DT_REG) { // Regular file
++            for (i = 0; temp_patterns[i] != NULL; i++) {
++                if (fnmatch(temp_patterns[i], entry->d_name, 0) == 0) {
++                    char full_path[PATH_MAX];
++                    snprintf(full_path, sizeof(full_path), "/tmp/%s", entry->d_name);
++                    
++                    if (unlink(full_path) == 0) {
++                        LOG_INFO("Cleaned up: %s", full_path);
++                    } else {
++                        LOG_WARN("Failed to remove: %s", full_path);
++                    }
++                    break;
++                }
++            }
++        }
++    }
++    
++    closedir(dir);
++}
++
++
+ /**
+  * Print usage.
+  */
+@@ -225,6 +271,9 @@ main(int argc, char *argv[]) {
+ 	size_t thr_stack_size = 0;
+ 	int opt;
+ 
++	// Cleanup old temporary files before starting
++	cleanup_old_temp_files();
++
+ 	// Init log.
+ 	log_thread_setname("main");
+ 	log_syslog_enable(1);

@@ -26,6 +26,13 @@ validate_config() {
 
 start_service() {
     logger -t $NAME "开始启动服务"
+    
+    # 启动前清理所有 msd_lite 相关的临时文件
+    logger -t $NAME "清理旧的临时文件"
+    find /tmp -name "msd_*.tmp" -delete 2>/dev/null
+    find /tmp -name "msd_lite*.log" -delete 2>/dev/null
+    [ -f "$CONFDIR/$NAME.conf" ] && rm -f "$CONFDIR/$NAME.conf"
+    
     config_load "$NAME"
     config_foreach start_instance "msd_lite"
 }
@@ -112,6 +119,8 @@ EOF
 
 stop_service() {
     logger -t $NAME "停止服务"
+    # 停止时也清理临时文件
+    find /tmp -name "msd_*.tmp" -delete 2>/dev/null
     [ -f "$CONFDIR/$NAME.conf" ] && rm -f "$CONFDIR/$NAME.conf"
 }
 

@@ -6,8 +6,8 @@ function index()
 	end
 
 	entry({"admin", "services", "msd_lite"}, alias("admin", "services", "msd_lite", "general"), _("Multi Stream Daemon"), 80)
-	entry({"admin", "services", "msd_lite", "general"}, cbi("msd_lite/settings"), _("Setting"), 1)
-	entry({"admin", "services", "msd_lite", "log"}, form("msd_lite/info"), _("Log"), 2)
+	entry({"admin", "services", "msd_lite", "general"}, cbi("msd_lite/settings"), _("设置"), 1)
+	entry({"admin", "services", "msd_lite", "log"}, form("msd_lite/info"), _("日志"), 2)
 
 	entry({"admin", "services", "msd_lite", "status"}, call("status")).leaf = true
 end

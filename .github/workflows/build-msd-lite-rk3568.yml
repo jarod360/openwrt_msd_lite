@@ -1,18 +1,24 @@
-name: Build MSD_Lite and LuCI App for RK3568
+name: 构建 MSD_Lite 和 LuCI 应用 (RK3568)
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
+      release_type:
+        description: '发布类型'
+        required: true
+        default: 'release'
+        type: choice
+        options:
+        - prerelease
+        - release
       ssh:
-        description: 'SSH connection to Actions'
+        description: '启用 SSH 调试'
         required: false
         default: 'false'
 
-# 添加工作流级别的权限配置
+# 工作流权限配置
 permissions:
-  contents: write  # 这行是关键！
+  contents: write
   packages: read
   issues: read
 
@@ -22,19 +28,19 @@ env:
 
 jobs:
   build:
-    name: Build msd_lite and LuCI app for RK3568
+    name: 构建 msd_lite 和 LuCI 应用
     runs-on: ubuntu-latest
     
-    # 也可以在 job 级别设置权限（双重保障）
+    # 任务级别权限设置
     permissions:
       contents: write
       packages: read
     
     steps:
-      - name: Checkout repository
+      - name: 检出代码库
         uses: actions/checkout@v4
 
-      - name: Install build dependencies
+      - name: 安装编译依赖
         run: |
           sudo -E rm -rf /usr/share/dotnet /etc/mysql /etc/php /usr/local/lib/android
           sudo -E apt-get -qq update
@@ -58,8 +64,9 @@ jobs:
             zlib1g-dev \
             zstd
 
-      - name: Download and extract OpenWrt SDK
+      - name: 下载并解压 OpenWrt SDK
         run: |
+          echo "📥 正在下载 OpenWrt SDK..."
           wget -q ${{ env.SDK_URL }}
           file_name=$(echo ${{ env.SDK_URL }} | awk -F/ '{print $NF}')
           mkdir sdk
@@ -68,19 +75,20 @@ jobs:
           elif [[ $file_name == *.tar.zst ]]; then
             tar --zstd -x -f $file_name -C ./sdk --strip-components=1
           else
-            echo "Unsupported file format: $file_name"
+            echo "❌ 不支持的文件格式: $file_name"
             exit 1
           fi
+          echo "✅ SDK 下载解压完成"
           echo "SDK_DIR=$PWD/sdk" >> $GITHUB_ENV
 
-      - name: Copy packages to SDK
+      - name: 复制软件包到 SDK
         run: |
           # 复制 msd_lite 包
           if [ -d "msd_lite" ]; then
             cp -r msd_lite $SDK_DIR/package/
-            echo "✅ msd_lite package copied successfully"
+            echo "✅ msd_lite 软件包复制成功"
           else
-            echo "❌ Could not find msd_lite package directory"
+            echo "❌ 找不到 msd_lite 软件包目录"
             find . -name "*msd*" -type d
             exit 1
           fi
@@ -88,29 +96,31 @@ jobs:
           # 复制 luci-app-msd_lite 包
           if [ -d "luci-app-msd_lite" ]; then
             cp -r luci-app-msd_lite $SDK_DIR/package/
-            echo "✅ luci-app-msd_lite package copied successfully"
+            echo "✅ luci-app-msd_lite 软件包复制成功"
           else
-            echo "❌ Could not find luci-app-msd_lite package directory"
+            echo "❌ 找不到 luci-app-msd_lite 软件包目录"
             exit 1
           fi
           
-          echo "Package contents:"
+          echo "📁 软件包内容:"
           ls -la $SDK_DIR/package/msd_lite/
           ls -la $SDK_DIR/package/luci-app-msd_lite/
 
-      - name: SSH connection to Actions (debug)
+      - name: SSH 连接调试
         uses: mxschmitt/action-tmate@v3
         if: ${{ github.event.inputs.ssh == 'true' }}
 
-      - name: Setup feeds and configuration
+      - name: 配置 feeds 和编译设置
         run: |
           cd $SDK_DIR
           
           # 更新 feeds
+          echo "🔄 更新 feeds..."
           ./scripts/feeds update -a
           ./scripts/feeds install -a
           
           # 基础配置 - 同时启用两个包
+          echo "⚙️ 配置编译参数..."
           echo "CONFIG_TARGET_rockchip_armv8=y" > .config
           echo "CONFIG_TARGET_rockchip_armv8_DEVICE_friendlyarm_nanopi-r5s=y" >> .config
           echo "CONFIG_ALL_NONSHARED=n" >> .config
@@ -121,52 +131,57 @@ jobs:
           echo "CONFIG_PACKAGE_luci-app-msd_lite=m" >> .config
           
           make defconfig
+          echo "✅ 配置完成"
 
-      - name: Download package sources
+      - name: 下载软件包源码
         run: |
           cd $SDK_DIR
+          echo "📥 下载软件包源码..."
           make package/msd_lite/download V=s
           make package/luci-app-msd_lite/download V=s
           find dl -size -1024c -exec ls -l {} \; || true
 
-      - name: Build both packages
+      - name: 编译软件包
         id: compile
         run: |
           cd $SDK_DIR
-          echo "🚀 Starting compilation of both packages..."
+          echo "🚀 开始编译软件包..."
           
           # 清理并编译 msd_lite
+          echo "🔧 编译 msd_lite..."
           make package/msd_lite/clean V=s
           make package/msd_lite/compile -j$(nproc) V=s
           
           # 清理并编译 luci-app-msd_lite
+          echo "🔧 编译 luci-app-msd_lite..."
           make package/luci-app-msd_lite/clean V=s
           make package/luci-app-msd_lite/compile -j$(nproc) V=s
           
+          echo "✅ 编译完成"
           echo "status=success" >> $GITHUB_OUTPUT
           echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
-      - name: Find and organize build artifacts
+      - name: 整理编译产物
         if: steps.compile.outputs.status == 'success'
         run: |
           cd $SDK_DIR
-          echo "📦 Searching for build artifacts..."
+          echo "📦 正在整理编译产物..."
           
           # 创建上传目录
           mkdir -p upload
           
           # 查找所有 IPK 文件
-          echo "=== IPK files ==="
+          echo "=== IPK 文件 ==="
           find bin -name "*msd_lite*.ipk" -type f | while read file; do
-            echo "Found IPK: $file"
+            echo "找到 IPK 文件: $file"
             cp "$file" upload/
           done
           
           # 查找二进制文件
-          echo "=== Binary files ==="
+          echo "=== 二进制文件 ==="
           find build_dir -name "msd_lite" -type f | while read file; do
             if file "$file" | grep -q "ELF"; then
-              echo "Found ELF binary: $file"
+              echo "找到 ELF 二进制文件: $file"
               cp "$file" upload/msd_lite
               chmod +x upload/msd_lite
               break
@@ -175,95 +190,107 @@ jobs:
           
           # 如果没有找到二进制文件，搜索编译目录
           if [ ! -f "upload/msd_lite" ]; then
-            echo "⚠️  Searching in build directories..."
+            echo "⚠️  在编译目录中搜索..."
             find build_dir -path "*/msd_lite-*" -name "msd_lite" -type f | head -5 | while read file; do
-              echo "Found in build dir: $file"
+              echo "在编译目录中找到: $file"
               cp "$file" upload/msd_lite
               chmod +x upload/msd_lite
               break
             done
           fi
           
-          echo "📁 Upload directory contents:"
+          echo "📁 上传目录内容:"
           ls -la upload/
-          echo "📊 File details:"
-          file upload/* 2>/dev/null || echo "No files in upload directory"
+          echo "📊 文件详细信息:"
+          file upload/* 2>/dev/null || echo "上传目录中没有文件"
 
-      - name: Generate release info
+      - name: 生成发布信息
         id: info
         if: steps.compile.outputs.status == 'success'
         run: |
           cd $SDK_DIR
-          echo "## :mega: MSD_Lite for RK3568" > upload/RELEASE_INFO.md
+          echo "## 🎯 MSD_Lite for RK3568" > upload/RELEASE_INFO.md
           echo "![](https://img.shields.io/github/downloads/${{ github.repository }}/total?style=flat-square)" >> upload/RELEASE_INFO.md
-          echo "### Build Information" >> upload/RELEASE_INFO.md
-          echo "**:minidisc: Build Date:** $(date)" >> upload/RELEASE_INFO.md
-          echo "**:computer: Platform:** RK3568 (Rockchip ARMv8)" >> upload/RELEASE_INFO.md
-          echo "**:gear: SDK Version:** OpenWrt 23.05.3" >> upload/RELEASE_INFO.md
-          echo "**:hash: Commit:** ${{ github.sha }}" >> upload/RELEASE_INFO.md
+          echo "### 📋 编译信息" >> upload/RELEASE_INFO.md
+          echo "**📅 编译日期:** $(date)" >> upload/RELEASE_INFO.md
+          echo "**💻 平台:** RK3568 (Rockchip ARMv8)" >> upload/RELEASE_INFO.md
+          echo "**🔧 SDK 版本:** OpenWrt 23.05.3" >> upload/RELEASE_INFO.md
+          echo "**🔖 Commit:** ${{ github.sha }}" >> upload/RELEASE_INFO.md
           
-          echo "### Packages Included" >> upload/RELEASE_INFO.md
-          echo "- **msd_lite** - Multicast Stream Daemon Lite" >> upload/RELEASE_INFO.md
-          echo "- **luci-app-msd_lite** - LuCI Web Interface" >> upload/RELEASE_INFO.md
+          echo "### 📦 包含的软件包" >> upload/RELEASE_INFO.md
+          echo "- **msd_lite** - 轻量级组播流守护进程" >> upload/RELEASE_INFO.md
+          echo "- **luci-app-msd_lite** - LuCI 网页管理界面" >> upload/RELEASE_INFO.md
           
-          echo "### Installation Instructions" >> upload/RELEASE_INFO.md
-          echo "1. Upload IPK files to your OpenWrt device" >> upload/RELEASE_INFO.md
-          echo "2. Install: \`opkg install msd_lite_*.ipk\`" >> upload/RELEASE_INFO.md
-          echo "3. Install LuCI: \`opkg install luci-app-msd_lite_*.ipk\`" >> upload/RELEASE_INFO.md
-          echo "4. Access via LuCI: Services → MSD Lite" >> upload/RELEASE_INFO.md
+          echo "### 📖 安装说明" >> upload/RELEASE_INFO.md
+          echo "1. 将 IPK 文件上传到 OpenWrt 设备" >> upload/RELEASE_INFO.md
+          echo "2. 安装主程序: \`opkg install msd_lite_*.ipk\`" >> upload/RELEASE_INFO.md
+          echo "3. 安装 LuCI 界面: \`opkg install luci-app-msd_lite_*.ipk\`" >> upload/RELEASE_INFO.md
+          echo "4. 在 LuCI 中访问: 服务 → MSD Lite" >> upload/RELEASE_INFO.md
           
-          echo "### File List" >> upload/RELEASE_INFO.md
+          echo "### 📁 文件列表" >> upload/RELEASE_INFO.md
           echo "\`\`\`" >> upload/RELEASE_INFO.md
           ls -la upload/ >> upload/RELEASE_INFO.md
           echo "\`\`\`" >> upload/RELEASE_INFO.md
           
           echo "status=success" >> $GITHUB_OUTPUT
 
-      - name: Debug permissions and files
+      - name: 调试权限和文件
         if: steps.compile.outputs.status == 'success'
         run: |
           cd $SDK_DIR
-          echo "🔧 Checking permissions and files..."
-          echo "Working directory: $(pwd)"
-          echo "Upload directory contents:"
+          echo "🔧 检查权限和文件..."
+          echo "工作目录: $(pwd)"
+          echo "上传目录内容:"
           ls -la upload/
-          echo "Release info file:"
-          cat upload/RELEASE_INFO.md || echo "No release info file"
+          echo "发布信息文件:"
+          cat upload/RELEASE_INFO.md || echo "没有发布信息文件"
 
-      - name: Create GitHub Release
+      - name: 创建 GitHub 发布
         if: steps.compile.outputs.status == 'success' && steps.info.outputs.status == 'success'
         run: |
           BUILD_TAG="build-$(date +%Y%m%d-%H%M%S)"
-          echo "Creating release with tag: $BUILD_TAG"
-          gh release create "$BUILD_TAG" \
-            --title "MSD Lite RK3568 Build $(date +'%Y-%m-%d %H:%M')" \
-            --notes-file ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md \
-            ${{ env.SDK_DIR }}/upload/*.ipk \
-            ${{ env.SDK_DIR }}/upload/msd_lite \
-            --prerelease
+          RELEASE_TYPE="${{ github.event.inputs.release_type }}"
+          
+          echo "创建发布: $BUILD_TAG"
+          echo "发布类型: $RELEASE_TYPE"
+          
+          if [ "$RELEASE_TYPE" = "prerelease" ]; then
+            gh release create "$BUILD_TAG" \
+              --title "MSD Lite RK3568 编译版本 $(date +'%Y-%m-%d %H:%M')" \
+              --notes-file ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md \
+              ${{ env.SDK_DIR }}/upload/*.ipk \
+              ${{ env.SDK_DIR }}/upload/msd_lite \
+              --prerelease
+          else
+            gh release create "$BUILD_TAG" \
+              --title "MSD Lite RK3568 正式版本 $(date +'%Y-%m-%d %H:%M')" \
+              --notes-file ${{ env.SDK_DIR }}/upload/RELEASE_INFO.md \
+              ${{ env.SDK_DIR }}/upload/*.ipk \
+              ${{ env.SDK_DIR }}/upload/msd_lite
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload IPK packages to artifacts
+      - name: 上传 IPK 包到产物
         uses: actions/upload-artifact@v4
         with:
           name: msd-lite-ipk-packages
           path: ${{ env.SDK_DIR }}/upload/*.ipk
           if-no-files-found: warn
 
-      - name: Upload binary to artifacts
+      - name: 上传二进制文件到产物
         uses: actions/upload-artifact@v4
         with:
           name: msd-lite-binary
           path: ${{ env.SDK_DIR }}/upload/msd_lite
           if-no-files-found: warn
 
-      - name: Debug build directory structure
+      - name: 调试编译目录结构
         if: always()
         run: |
           cd $SDK_DIR
-          echo "🔍 Debugging build directory structure..."
-          echo "=== All IPK files ==="
+          echo "🔍 调试编译目录结构..."
+          echo "=== 所有 IPK 文件 ==="
           find bin -name "*.ipk" -type f | head -20
-          echo "=== Build directories ==="
+          echo "=== 编译目录 ==="
           find build_dir -name "*msd_lite*" -type d | head -10

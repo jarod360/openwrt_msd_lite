@@ -40,27 +40,24 @@ start_service() {
 start_instance() {
     local section="$1"
     local enable bind_address bind_interface source_interface
-    local threads thread_bind_cpu hub_drop_slow_client hub_use_polling_for_send
-    local hub_zero_copy_on_send hub_persist_when_no_client hub_persist_when_no_source
-    local hub_precache_size hub_wait_precache source_ring_buffer_size source_multicast_rejoin_interval
+    local threads thread_bind_cpu hub_use_polling_for_send
+    local hub_zero_copy_on_send hub_precache_size hub_wait_precache 
+    local source_ring_buffer_size source_multicast_rejoin_interval
     local multicast_recv_buffer_size
     
     if ! validate_config "$section"; then
         return 1
     fi
 
-    # 获取所有配置参数
+    # 获取所有配置参数（移除了不需要的配置）
     config_get_bool enable "$section" enable 0
     config_get bind_address "$section" bind_address
     config_get bind_interface "$section" bind_interface
     config_get source_interface "$section" source_interface
     config_get threads "$section" threads 0
     config_get_bool thread_bind_cpu "$section" thread_bind_cpu 0
-    config_get_bool hub_drop_slow_client "$section" hub_drop_slow_client 0
     config_get_bool hub_use_polling_for_send "$section" hub_use_polling_for_send 0
     config_get_bool hub_zero_copy_on_send "$section" hub_zero_copy_on_send 0
-    config_get_bool hub_persist_when_no_client "$section" hub_persist_when_no_client 0
-    config_get_bool hub_persist_when_no_source "$section" hub_persist_when_no_source 0
     config_get hub_precache_size "$section" hub_precache_size 2048
     config_get_bool hub_wait_precache "$section" hub_wait_precache 0
     config_get source_ring_buffer_size "$section" source_ring_buffer_size 8192
@@ -73,7 +70,7 @@ start_instance() {
 
     mkdir -p "$CONFDIR"
     
-    # 生成完整配置文件
+    # 生成优化后的配置文件（移除了不需要的配置项）
     cat <<-EOF > "$CONFDIR/$NAME.conf"
 <?xml version="1.0" encoding="utf-8"?>
 <msd>
@@ -99,14 +96,11 @@ start_instance() {
 
     <hubProfileList>
         <hubProfile>
-            <fDropSlowClients>$( [ "$hub_drop_slow_client" -eq 1 ] && echo "yes" || echo "no")</fDropSlowClients>
             <fSocketHalfClosed>no</fSocketHalfClosed>
             <fSocketTCPNoDelay>yes</fSocketTCPNoDelay>
             <fSocketTCPNoPush>yes</fSocketTCPNoPush>
             <fUsePollingForSend>$( [ "$hub_use_polling_for_send" -eq 1 ] && echo "yes" || echo "no")</fUsePollingForSend>
             <fZeroCopyOnSend>$( [ "$hub_zero_copy_on_send" -eq 1 ] && echo "yes" || echo "no")</fZeroCopyOnSend>
-            <fPersistWhenNoClient>$( [ "$hub_persist_when_no_client" -eq 1 ] && echo "yes" || echo "no")</fPersistWhenNoClient>
-            <fPersistWhenNoSource>$( [ "$hub_persist_when_no_source" -eq 1 ] && echo "yes" || echo "no")</fPersistWhenNoSource>
             <fWaitPrecache>$( [ "$hub_wait_precache" -eq 1 ] && echo "yes" || echo "no")</fWaitPrecache>
             <precache>${hub_precache_size}</precache>
             <ringBufSize>${source_ring_buffer_size}</ringBufSize>

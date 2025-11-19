@@ -1,7 +1,7 @@
-# SPDX-License-Identifier: GPL-3.0-only
+# package/yourpath/msd_lite/Makefile
+# SPDX-License-Identifier: BSD-2-Clause
 #
-# Copyright (C) 2022 ImmortalWrt.org
-
+# (based on upstream and local packaging)
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=msd_lite
@@ -13,7 +13,7 @@ PKG_SOURCE_DATE:=2025-09-11
 PKG_SOURCE_VERSION:=79a6c62c8fced6128a5e445ee110709b3b51bb78
 PKG_MIRROR_HASH:=2081142af8a4d697032ef00e75c9537b54a1a45fccbdd935bce5752c6d0eb00b
 
-PKG_MAINTAINER:=Tianling Shen <cnsztl@immrotalwrt.org>
+PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>
 PKG_LICENSE:=BSD-2-Clause
 PKG_LICENSE_FILES:=LICENSE
 
@@ -38,15 +38,17 @@ define Package/msd_lite/conffiles
 /etc/config/msd_lite
 endef
 
-# 指定配置目录
-CMAKE_OPTIONS+= -DCONFDIR=../etc/msd_lite
+# 指定配置目录（传入源码 CMake）
+CMAKE_OPTIONS += -DCONFDIR=../etc/msd_lite
+CMAKE_OPTIONS += -DCMAKE_BUILD_TYPE=Release
+CMAKE_OPTIONS += -DCMAKE_INSTALL_PREFIX=/usr
 
-# RK3568 Cortex-A55 编译优化
-CMAKE_OPTIONS+= \
-  -DCMAKE_C_FLAGS="-O3 -march=armv8-a -mcpu=cortex-a55 -mtune=cortex-a55 -ffunction-sections -fdata-sections -flto -fuse-linker-plugin -ffast-math -fomit-frame-pointer" \
-  -DCMAKE_EXE_LINKER_FLAGS="-Wl,--gc-sections -flto -fuse-linker-plugin" \
-  -DCMAKE_SHARED_LINKER_FLAGS="-Wl,--gc-sections -flto -fuse-linker-plugin" \
-  -DCMAKE_STRIP=/usr/bin/strip
+# 针对特定目标（例如 cortex-a55）启用源码内部的目标优化选项（上游 CMakeLists 必须支持）
+ifeq ($(TARGET_ARCH),aarch64)
+  ifeq ($(TARGET_ARCH_VARIANT),cortex-a55)
+    CMAKE_OPTIONS += -DMSD_LITE_A55_OPT=ON
+  endif
+endif
 
 define Package/msd_lite/install
 	$(INSTALL_DIR) $(1)/usr/bin
@@ -61,5 +63,7 @@ define Package/msd_lite/install
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) $(CURDIR)/files/msd_lite.init $(1)/etc/init.d/msd_lite
 endef
+
+# 如果需要 LTO/IPO，建议由 upstream CMake 可控开关处理并且在 Makefile 中只传 option，不直接注入 flags.
 
 $(eval $(call BuildPackage,msd_lite))

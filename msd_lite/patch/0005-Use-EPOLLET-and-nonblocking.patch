@@ -1,0 +1,33 @@
+From 0005e4f... Mon Sep 17 00:00:00 2025
+From: msd-lite-patcher <patcher@example.com>
+Date: 2025-11-19
+Subject: [PATCH 0005/0007] Use EPOLLET and non-blocking mode for sockets
+
+--- a/src/event_loop.c
++++ b/src/event_loop.c
+@@
+-    ev.events = EPOLLIN | EPOLLERR | EPOLLHUP;
+-    ev.data.fd = fd;
+-    epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
++    /* Edge-triggered + non-blocking sockets for high throughput */
++    int flags = fcntl(fd, F_GETFL, 0);
++    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++    ev.events = EPOLLIN | EPOLLET | EPOLLERR | EPOLLHUP;
++    ev.data.fd = fd;
++    epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &ev);
+@@
+-    /* read once */
+-    ssize_t n = read(fd, buf, sizeof(buf));
+-    if (n > 0) process(buf, n);
++    /* read until EAGAIN (edge-triggered) */
++    for (;;) {
++        ssize_t n = read(fd, buf, sizeof(buf));
++        if (n > 0) {
++            process(buf, n);
++            continue;
++        }
++        if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) break;
++        if (n == 0) { /* EOF */ break; }
++        if (errno == EINTR) continue;
++        break;
++    }

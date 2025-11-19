@@ -1,0 +1,50 @@
+From 0001c0f... Mon Sep 17 00:00:00 2025
+From: msd-lite-patcher <patcher@example.com>
+Date: 2025-11-19
+Subject: [PATCH 0001/0007] Add CMake options for ARM A55 optim & LTO
+
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@
+ project(msd_lite)
+ 
++# Optional flags for target-specific optimizations and zero-copy features.
++option(MSD_LITE_A55_OPT "Enable Cortex-A55 specific compiler optimizations" OFF)
++option(MSD_LITE_ENABLE_LTO "Enable link-time optimization (LTO) when supported" OFF)
++option(MSD_LITE_ENABLE_SENDFILE_SPLICE "Enable zero-copy sendfile/splice usage" ON)
++
++if(MSD_LITE_A55_OPT)
++    message(STATUS "MSD_LITE: enabling Cortex-A55 optimizations")
++    add_compile_options(
++        -O3
++        -march=armv8.2-a+crc+crypto
++        -mcpu=cortex-a55
++        -mtune=cortex-a55
++        -ffast-math
++        -fomit-frame-pointer
++        -fno-math-errno
++        -fdata-sections
++        -ffunction-sections
++    )
++endif()
++
++if(MSD_LITE_ENABLE_LTO)
++    include(CheckIPOSupported)
++    check_ipo_supported(RESULT result OUTPUT output)
++    if(result)
++        message(STATUS "MSD_LITE: IPO/LTO supported; enabling")
++        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
++    else()
++        message(WARNING "MSD_LITE: IPO/LTO not supported by toolchain: ${output}")
++    endif()
++endif()
++
++add_definitions(-DMSD_LITE_ENABLE_SENDFILE_SPLICE=$<BOOL:${MSD_LITE_ENABLE_SENDFILE_SPLICE}>)
++
++# End of optional flags
++
+ # detect environment
+ if (WIN32)
+     set(OS_TYPE "Win")
+@@
+ # rest of existing CMakeLists.txt...

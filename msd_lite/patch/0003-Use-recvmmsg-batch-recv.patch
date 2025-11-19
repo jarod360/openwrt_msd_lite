@@ -1,0 +1,87 @@
+From 0003c2d... Mon Sep 17 00:00:00 2025
+From: msd-lite-patcher <patcher@example.com>
+Date: 2025-11-19
+Subject: [PATCH 0003/0007] Use recvmmsg() for batch UDP receive with fallback
+
+--- a/src/udp_receiver.c
++++ b/src/udp_receiver.c
+@@
++#include <sys/uio.h>
++#include <sys/socket.h>
++#include <errno.h>
++
++#ifndef BATCH_RECV
++#define BATCH_RECV 16
++#endif
++#define PACKET_MAX 2048
++
++int udp_batch_receive_loop(int fd, void (*handle_packet)(const void*, size_t), int rcvbuf_kb)
++{
++    if (rcvbuf_kb > 0) {
++        int bytes = rcvbuf_kb * 1024;
++        int setval = bytes * 2; /* Linux doubles provided value */
++        setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &setval, sizeof(setval));
++    }
++
++    /* try recvmmsg */
++    struct mmsghdr msgs[BATCH_RECV];
++    struct iovec iov[BATCH_RECV];
++    char bufs[BATCH_RECV][PACKET_MAX];
++    struct sockaddr_storage addrs[BATCH_RECV];
++    memset(msgs, 0, sizeof(msgs));
++    for (int i=0;i<BATCH_RECV;i++) {
++        iov[i].iov_base = bufs[i];
++        iov[i].iov_len = sizeof(bufs[i]);
++        msgs[i].msg_hdr.msg_iov = &iov[i];
++        msgs[i].msg_hdr.msg_iovlen = 1;
++        msgs[i].msg_hdr.msg_name = &addrs[i];
++        msgs[i].msg_hdr.msg_namelen = sizeof(addrs[i]);
++    }
++
++    for (;;) {
++        int ret = recvmmsg(fd, msgs, BATCH_RECV, MSG_WAITFORONE, NULL);
++        if (ret > 0) {
++            for (int i=0;i<ret;i++) {
++                handle_packet(bufs[i], msgs[i].msg_len);
++            }
++            continue;
++        } else if (ret == 0) {
++            continue;
++        } else {
++            if (errno == ENOSYS || errno == EINVAL) {
++                /* recvmmsg not available -> fallback */
++                fprintf(stderr,"recvmmsg not supported; falling back to recvfrom()\n");
++                break;
++            }
++            if (errno == EAGAIN || errno == EWOULDBLOCK) {
++                usleep(1000);
++                continue;
++            }
++            if (errno == EINTR) continue;
++            perror("recvmmsg");
++            usleep(1000);
++            continue;
++        }
++    }
++
++    /* fallback to single-packet recvfrom */
++    for (;;) {
++        char buf[PACKET_MAX];
++        struct sockaddr_storage addr;
++        socklen_t addrlen = sizeof(addr);
++        ssize_t n = recvfrom(fd, buf, sizeof(buf), 0, (struct sockaddr*)&addr, &addrlen);
++        if (n > 0) {
++            handle_packet(buf, (size_t)n);
++        } else {
++            if (errno == EAGAIN || errno == EWOULDBLOCK) {
++                usleep(1000);
++                continue;
++            }
++            if (errno == EINTR) continue;
++            perror("recvfrom");
++            usleep(1000);
++        }
++    }
++
++    return 0;
++}

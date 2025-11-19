@@ -52,10 +52,6 @@ thread_bind_cpu = s:taboption("advanced", Flag, "thread_bind_cpu", translate("�
 thread_bind_cpu.rmempty = false
 thread_bind_cpu.description = translate("启用后每个线程将绑定到指定 CPU 核心，提高多核效率")
 
-hub_drop_slow_client = s:taboption("advanced", Flag, "hub_drop_slow_client", translate("丢弃慢速客户端"))
-hub_drop_slow_client.rmempty = false
-hub_drop_slow_client.description = translate("当客户端接收速度过慢时自动断开连接")
-
 hub_use_polling_for_send = s:taboption("advanced", Flag, "hub_use_polling_for_send", translate("使用轮询方式发送数据"))
 hub_use_polling_for_send.rmempty = false
 hub_use_polling_for_send.description = translate("启用后使用轮询模式替代阻塞式发送，适合高并发场景")
@@ -63,14 +59,6 @@ hub_use_polling_for_send.description = translate("启用后使用轮询模式替
 hub_zero_copy_on_send = s:taboption("advanced", Flag, "hub_zero_copy_on_send", translate("启用零拷贝发送"))
 hub_zero_copy_on_send.rmempty = false
 hub_zero_copy_on_send.description = translate("开启零拷贝发送以降低 CPU 占用，提升性能")
-
-hub_persist_when_no_client = s:taboption("advanced", Flag, "hub_persist_when_no_client", translate("无客户端时保持频道"))
-hub_persist_when_no_client.rmempty = false
-hub_persist_when_no_client.description = translate("启用后即使没有客户端连接也不销毁频道实例，减少频道重建开销")
-
-hub_persist_when_no_source = s:taboption("advanced", Flag, "hub_persist_when_no_source", translate("无信号源时保持频道"))
-hub_persist_when_no_source.rmempty = false
-hub_persist_when_no_source.description = translate("启用后即使无信号源也不销毁频道实例，等待信号源恢复")
 
 hub_wait_precache = s:taboption("advanced", Flag, "hub_wait_precache", translate("启用预缓存等待"))
 hub_wait_precache.rmempty = false

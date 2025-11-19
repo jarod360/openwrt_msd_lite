@@ -77,32 +77,62 @@ start_instance() {
     cat <<-EOF > "$CONFDIR/$NAME.conf"
 <?xml version="1.0" encoding="utf-8"?>
 <msd>
-    <log><file>/tmp/msd_lite.log</file></log>
+    <log>
+        <file>/tmp/msd_lite.log</file>
+    </log>
+
     <threadPool>
         <threadsCountMax>${threads}</threadsCountMax>
         <fBindToCPU>$( [ "$thread_bind_cpu" -eq 1 ] && echo "yes" || echo "no")</fBindToCPU>
+        <fCacheGetTimeSyscall>yes</fCacheGetTimeSyscall>
+        <timerGranularity>100</timerGranularity>
     </threadPool>
+
     <HTTP>
         <bindList>
             <bind><address>${bind_ip}:${bind_port}</address><fAcceptFilter>y</fAcceptFilter></bind>
         </bindList>
-        <hostnameList><hostname>*</hostname></hostnameList>
+        <hostnameList>
+            <hostname>*</hostname>
+        </hostnameList>
     </HTTP>
+
     <hubProfileList>
         <hubProfile>
             <fDropSlowClients>$( [ "$hub_drop_slow_client" -eq 1 ] && echo "yes" || echo "no")</fDropSlowClients>
+            <fSocketHalfClosed>no</fSocketHalfClosed>
             <fSocketTCPNoDelay>yes</fSocketTCPNoDelay>
+            <fSocketTCPNoPush>yes</fSocketTCPNoPush>
+            <fUsePollingForSend>$( [ "$hub_use_polling_for_send" -eq 1 ] && echo "yes" || echo "no")</fUsePollingForSend>
+            <fZeroCopyOnSend>$( [ "$hub_zero_copy_on_send" -eq 1 ] && echo "yes" || echo "no")</fZeroCopyOnSend>
+            <fPersistWhenNoClient>$( [ "$hub_persist_when_no_client" -eq 1 ] && echo "yes" || echo "no")</fPersistWhenNoClient>
+            <fPersistWhenNoSource>$( [ "$hub_persist_when_no_source" -eq 1 ] && echo "yes" || echo "no")</fPersistWhenNoSource>
             <fWaitPrecache>$( [ "$hub_wait_precache" -eq 1 ] && echo "yes" || echo "no")</fWaitPrecache>
             <precache>${hub_precache_size}</precache>
             <ringBufSize>${source_ring_buffer_size}</ringBufSize>
+            <skt>
+                <sndBuf>512</sndBuf>
+                <sndLoWatermark>64</sndLoWatermark>
+            </skt>
+            <headersList>
+                <header>Pragma: no-cache</header>
+                <header>Content-Type: video/mpeg</header>
+                <header>ContentFeatures.DLNA.ORG: DLNA.ORG_OP=01;DLNA.ORG_CI=0;DLNA.ORG_FLAGS=01700000000000000000000000000000</header>
+                <header>TransferMode.DLNA.ORG: Streaming</header>
+            </headersList>
         </hubProfile>
     </hubProfileList>
+
     <sourceProfileList>
         <sourceProfile>
+            <skt>
+                <rcvBuf>${multicast_recv_buffer_size}</rcvBuf>
+                <rcvLoWatermark>48</rcvLoWatermark>
+                <rcvTimeout>2</rcvTimeout>
+            </skt>
             <multicast>
                 <ifName>${source_interface}</ifName>
                 <rejoinTime>${source_multicast_rejoin_interval}</rejoinTime>
-                <recvBufSize>${multicast_recv_buffer_size}</recvBufSize>
             </multicast>
         </sourceProfile>
     </sourceProfileList>

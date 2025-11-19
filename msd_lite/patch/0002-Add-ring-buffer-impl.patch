@@ -1,0 +1,98 @@
+From 0002b1a... Mon Sep 17 00:00:00 2025
+From: msd-lite-patcher <patcher@example.com>
+Date: 2025-11-19
+Subject: [PATCH 0002/0007] Add lightweight ring buffer (fixed pool) implementation
+
+--- a/ (new)
++++ b/ (new)
+@@
++/* src/ring_buffer.h */
++#ifndef _RING_BUFFER_H_
++#define _RING_BUFFER_H_
++
++#include <stdint.h>
++#include <stddef.h>
++
++typedef struct ring_buffer_t {
++    uint8_t *pool;
++    size_t bufsize;
++    size_t count;
++    size_t head;
++    size_t tail;
++    int full;
++    pthread_mutex_t lock;
++    sem_t sem;
++} ring_buffer_t;
++
++int ring_init(ring_buffer_t *r, size_t count, size_t bufsize);
++void ring_free(ring_buffer_t *r);
++int ring_push(ring_buffer_t *r, const void *data, size_t len);
++int ring_pop(ring_buffer_t *r, void *outbuf, size_t *outlen);
++
++#endif /* _RING_BUFFER_H_ */
++
++/* src/ring_buffer.c */
++#include "ring_buffer.h"
++#include <stdlib.h>
++#include <string.h>
++#include <pthread.h>
++#include <semaphore.h>
++#include <errno.h>
++
++int ring_init(ring_buffer_t *r, size_t count, size_t bufsize) {
++    if (!r || count == 0 || bufsize == 0) return -1;
++    r->pool = malloc(count * bufsize);
++    if (!r->pool) return -1;
++    r->bufsize = bufsize;
++    r->count = count;
++    r->head = r->tail = 0;
++    r->full = 0;
++    pthread_mutex_init(&r->lock, NULL);
++    sem_init(&r->sem, 0, 0);
++    return 0;
++}
++
++void ring_free(ring_buffer_t *r) {
++    if (!r) return;
++    free(r->pool);
++    r->pool = NULL;
++    sem_destroy(&r->sem);
++    pthread_mutex_destroy(&r->lock);
++}
++
++int ring_push(ring_buffer_t *r, const void *data, size_t len) {
++    if (!r || !data || len == 0 || len > r->bufsize) return -1;
++    pthread_mutex_lock(&r->lock);
++    if (r->full) {
++        pthread_mutex_unlock(&r->lock);
++        return -2; /* full */
++    }
++    uint8_t *dst = r->pool + (r->tail * r->bufsize);
++    memcpy(dst, data, len);
++    r->tail = (r->tail + 1) % r->count;
++    if (r->tail == r->head) r->full = 1;
++    pthread_mutex_unlock(&r->lock);
++    sem_post(&r->sem);
++    return 0;
++}
++
++int ring_pop(ring_buffer_t *r, void *outbuf, size_t *outlen) {
++    if (!r || !outbuf || !outlen) return -1;
++    if (sem_wait(&r->sem) != 0) {
++        if (errno == EINTR) return -2;
++    }
++    pthread_mutex_lock(&r->lock);
++    if (r->head == r->tail && !r->full) {
++        pthread_mutex_unlock(&r->lock);
++        return -3; /* empty */
++    }
++    uint8_t *src = r->pool + (r->head * r->bufsize);
++    /* consumer must know expected length; we copy bufsize */
++    memcpy(outbuf, src, r->bufsize);
++    *outlen = r->bufsize;
++    r->head = (r->head + 1) % r->count;
++    r->full = 0;
++    pthread_mutex_unlock(&r->lock);
++    return 0;
++}
++
